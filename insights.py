@@ -227,12 +227,12 @@ def generate_insights(positions, report_summary, peak_dist, timing):
 
     return insights
 
+
 def generate_rules(positions, report_summary, timing):
     """
     Derive a fully personalised rule set from THIS wallet's data.
     Every rule's text is computed from their real numbers — position sizes,
     peak distribution, entry timing, behaviour. No fixed strings.
-
     Returns a list of rule groups: {section, icon, rules: [{rule, reason}]}.
     """
     n = report_summary["total_trades"]
@@ -293,7 +293,7 @@ def generate_rules(positions, report_summary, timing):
         groups.append({"section": "How to enter", "icon": "→", "rules": entry_rules})
 
     # ════════════════════════════════════════════════════════════
-    # HOW TO EXIT  — the ladder is built from THEIR peak distribution
+    # HOW TO EXIT — the ladder is built from THEIR peak distribution
     # ════════════════════════════════════════════════════════════
     exit_rules = []
     dist = prof["dist"]
@@ -396,7 +396,6 @@ def generate_rules(positions, report_summary, timing):
     # Daily stop — scaled to their actual bad-day losses
     if prof["med_losing_day"] < 0:
         stop = abs(prof["med_losing_day"])
-        # round to something clean
         stop_txt = _fmt_size(stop) if stop < 1 else f"{stop:.1f}"
         session_rules.append({
             "rule": f"Daily stop at ~{stop_txt} SOL down",
@@ -411,7 +410,7 @@ def generate_rules(positions, report_summary, timing):
             "reason": f"{prof['losing_hv_days']} of your {prof['high_vol_days']} high-volume days lost money. Overtrading is costing you.",
         })
 
-    # Revenge sizing — only if they actually size up after losses (proxy: high size variance)
+    # Revenge sizing — only if they actually size up after losses
     sizes = [p["sol_in"] for p in positions if p.get("sol_in", 0) > 0]
     if sizes:
         mx, md = max(sizes), prof["med_size"]
