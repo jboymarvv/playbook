@@ -1,3 +1,4 @@
+# Updated dynamic sizing - 2026-06-21
 """
 insights.py — Data-driven written insights & rules
 ===================================================
