@@ -1,0 +1,4 @@
+access.db
+cache.db
+__pycache__/
+*.pyc
