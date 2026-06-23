@@ -1,68 +1,39 @@
 Playbook
 Personalized trading insights from your own data.
-Playbook analyzes your Solana memecoin trade history against real historical candle data and generates clear, personalized rules and insights tailored to how you actually trade.
+Playbook analyzes your Solana memecoin trade history against real historical price data and turns it into clear, personalized rules and insights — built specifically from how you trade.
 ---
 What is Playbook?
 Most traders know what they bought. Very few truly understand how they exited.
-Playbook helps you see the gap between what your trades could have made and what they actually made. It turns your raw trade data into actionable, personalized trading rules — not generic advice.
-Free Tier (7-Day Preview)
-Full analysis of your last 7 days of trading
-Personalized insights based on your actual data
-Peak distribution, timing analysis, and basic rules
-Premium Tier (All-Time Report)
-Complete analysis of your entire trading history
+Playbook shows you the difference between what your trades could have made and what they actually made. It generates practical, personalized trading rules based on your real data — not generic advice.
+Free
+7-day analysis of your recent trading
+Personalized insights and basic rules derived from your data
+Premium ($10 one-time)
+Full all-time analysis of every trade you've made
 Custom AI-powered insights and refined trading rules
-Deeper breakdowns and full personalized playbook
+Deeper breakdowns tailored to your trading style
 ---
-Features
-Real candle data analysis — Replays your trades against actual historical price movement
-Personalized rules — Rules are generated from your trading patterns, not generic templates
-Exit efficiency tracking — See exactly where you left money on the table
-Timing insights — Discover your best and worst trading hours/days
-Privacy-first — We never see your wallet directly. Only the trades you choose to upload.
+Why Playbook?
+Real data, not guesses — Uses actual historical candle data to evaluate your exits
+Personalized rules — Recommendations are based on your trading patterns and behaviour
+Privacy focused — We only process the trades you choose to share
+Simple to use — Just upload your Solscan CSV
+> **Coming soon**: Direct wallet analysis via Helius (no CSV export required).
 ---
 Live Site
-https://www.playbook.ie 
+https://www.playbook.ie
 ---
-Tech Stack
-Backend
-FastAPI (Python)
-SQLite (persistent caching for candles & results)
-Railway (hosting + volumes)
-Frontend
-Vanilla HTML + JavaScript + Chart.js
-Hosted on Cloudflare Pages
-Data Sources
-Solscan (trade history export)
-Solana Tracker (historical candle data)
+Tech Stack (High Level)
+Backend: FastAPI + Python
+Frontend: Static site (HTML + JavaScript)
+Hosting: Railway (backend) + Cloudflare Pages (frontend)
+Data: Solscan + Solana Tracker (with plans to integrate Helius)
 ---
-Getting Started
-If you want to run the backend locally or deploy it yourself, see the full setup guide:
-→ SETUP_GUIDE.md
----
-Project Structure
-```
-backend/
-├── main.py              # FastAPI entrypoint
-├── analyser.py          # Core analysis engine
-├── insights.py          # Rule generation & personalization
-├── payments.py          # Stripe + Helio integration
-├── access.py            # Access control & payments
-├── cache.py             # Persistent caching layer
-├── config.py            # Environment configuration
-├── requirements.txt
-├── Procfile
-└── SETUP_GUIDE.md
-```
----
-Roadmap
-[ ] Public launch
-[ ] Improved AI-powered premium analysis
-[ ] Better mobile experience
-[ ] Community features & shared playbooks
+Contributing
+The project is currently focused on the hosted product at playbook.ie.
+If you're interested in contributing or running your own instance, feel free to open an issue or reach out. Self-hosting instructions are available in `SETUP_GUIDE.md` for those who need them.
 ---
 License
-This project is currently private. All rights reserved.
+All rights reserved. This project is provided as-is for the hosted service at playbook.ie.
 ---
-Built by a trader, for traders.  
-If you found this useful, feel free to star the repo or reach out.
+Built by a trader, for traders.
