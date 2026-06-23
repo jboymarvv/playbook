@@ -1,4 +1,3 @@
-# Updated dynamic sizing - 2026-06-21
 """
 insights.py — Data-driven written insights & rules
 ===================================================
@@ -233,10 +232,7 @@ def generate_rules(positions, report_summary, timing):
     Derive a fully personalised rule set from THIS wallet's data.
     Every rule's text is computed from their real numbers — position sizes,
     peak distribution, entry timing, behaviour. No fixed strings.
-<<<<<<< HEAD
 
-=======
->>>>>>> 5b8a1cbb675eb6a7f83f84f77fb8d76589ea1396
     Returns a list of rule groups: {section, icon, rules: [{rule, reason}]}.
     """
     n = report_summary["total_trades"]
@@ -297,11 +293,7 @@ def generate_rules(positions, report_summary, timing):
         groups.append({"section": "How to enter", "icon": "→", "rules": entry_rules})
 
     # ════════════════════════════════════════════════════════════
-<<<<<<< HEAD
     # HOW TO EXIT  — the ladder is built from THEIR peak distribution
-=======
-    # HOW TO EXIT — the ladder is built from THEIR peak distribution
->>>>>>> 5b8a1cbb675eb6a7f83f84f77fb8d76589ea1396
     # ════════════════════════════════════════════════════════════
     exit_rules = []
     dist = prof["dist"]
@@ -404,10 +396,7 @@ def generate_rules(positions, report_summary, timing):
     # Daily stop — scaled to their actual bad-day losses
     if prof["med_losing_day"] < 0:
         stop = abs(prof["med_losing_day"])
-<<<<<<< HEAD
         # round to something clean
-=======
->>>>>>> 5b8a1cbb675eb6a7f83f84f77fb8d76589ea1396
         stop_txt = _fmt_size(stop) if stop < 1 else f"{stop:.1f}"
         session_rules.append({
             "rule": f"Daily stop at ~{stop_txt} SOL down",
@@ -421,24 +410,8 @@ def generate_rules(positions, report_summary, timing):
             "rule": f"Cap it at ~{cap} trades a day",
             "reason": f"{prof['losing_hv_days']} of your {prof['high_vol_days']} high-volume days lost money. Overtrading is costing you.",
         })
-<<<<<<< HEAD
 
     # Revenge sizing — only if they actually size up after losses (proxy: high size variance)
-    sizes = [p["sol_in"] for p in positions if p.get("sol_in", 0) > 0]
-    if sizes:
-        mx, md = max(sizes), prof["med_size"]
-        if md > 0 and mx >= md * 3:
-            session_rules.append({
-                "rule": "Never size up after a loss",
-                "reason": f"Your biggest position was {mx/md:.0f}x your normal size — that's where revenge trades blow up weeks.",
-            })
-
-    if session_rules:
-        groups.append({"section": "Discipline & timing", "icon": "★", "rules": session_rules})
-=======
->>>>>>> 5b8a1cbb675eb6a7f83f84f77fb8d76589ea1396
-
-    # Revenge sizing — only if they actually size up after losses
     sizes = [p["sol_in"] for p in positions if p.get("sol_in", 0) > 0]
     if sizes:
         mx, md = max(sizes), prof["med_size"]
