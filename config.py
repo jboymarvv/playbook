@@ -28,6 +28,18 @@ HELIUS_API_KEY = os.environ.get("HELIUS_API_KEY", "")
 DATA_SOURCE    = os.environ.get("DATA_SOURCE", "csv")   # "csv" or "helius"
 MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT", "20"))
 
+# -- xAI (Grok) premium narrative layer --
+# OFF by default. When enabled, paid all-time reports get an extra
+# AI-written coaching narrative ON TOP of the rule-based analysis.
+# The rule-based rules/numbers are NEVER replaced — xAI only adds prose.
+# Output is cached permanently per wallet (one paid call per wallet, ever).
+XAI_ENABLED     = os.environ.get("XAI_ENABLED", "false").lower() == "true"
+XAI_API_KEY     = os.environ.get("XAI_API_KEY", "")
+XAI_MODEL       = os.environ.get("XAI_MODEL", "grok-2-1212")
+XAI_BASE_URL    = os.environ.get("XAI_BASE_URL", "https://api.x.ai/v1")
+XAI_MAX_TOKENS  = int(os.environ.get("XAI_MAX_TOKENS", "1400"))
+XAI_TIMEOUT     = int(os.environ.get("XAI_TIMEOUT", "30"))
+
 # -- Caching --
 CANDLE_CACHE_TTL  = int(os.environ.get("CANDLE_CACHE_TTL",  str(7 * 86400)))
 TOKEN_INFO_TTL    = int(os.environ.get("TOKEN_INFO_TTL",    str(7 * 86400)))

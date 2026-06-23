@@ -318,13 +318,21 @@ def analyse_candles(candles, entry_price, entry_ts, exit_ts):
 # ─────────────────────────────────────────────────────────────
 
 def simulate_strategy(positions):
-    """Run the confirmed TP strategy at flat 0.1 SOL, using actual exits on losers."""
+    """
+    Run the TP strategy on each position USING THAT TRADE'S ACTUAL SIZE,
+    so the comparison against the user's real results is apples-to-apples.
+
+    The old version simulated a flat 0.1 SOL on every trade while the user's
+    'actual' figure reflected their real (often larger) sizes — which made the
+    strategy improvement look artificially tiny. Sizing the simulation to each
+    trade's real sol_in fixes that.
+    """
     total = 0.0
     wins = 0
     for p in positions:
         peak = p["peak_pct"]
         actual = p["actual_pct"]
-        sol = SIM_ENTRY
+        sol = p.get("sol_in", 0) or SIM_ENTRY   # use their REAL size for this trade
         profit = 0.0
         rem = sol
         if peak >= 100:
@@ -426,7 +434,16 @@ async def analyse_wallet(wallet, days=7):
     """
     Future entry point: fetch wallet history via API (Helius or Solana Tracker).
     Currently used only when DATA_SOURCE=helius is configured.
+
+    All-time results (days=None) are cached permanently — the history doesn't
+    change, so we never recompute. The 7-day preview is a rolling window and
+    is not permanently cached.
     """
+    if days is None:
+        cached = cache.get_wallet_result(wallet, None)
+        if cached:
+            return cached
+
     client = SolanaTrackerClient(config.API_KEY, max_concurrent=config.MAX_CONCURRENT)
 
     async with aiohttp.ClientSession() as session:
@@ -443,12 +460,47 @@ async def analyse_wallet(wallet, days=7):
 
         positions = await _enrich_positions(client, session, tokens)
 
-    return build_report(wallet, positions, days)
+    report = build_report(wallet, positions, days)
+    if days is None and "error" not in report:
+        cache.set_wallet_result(wallet, None, report)
+    return report
 
 
 # ─────────────────────────────────────────────────────────────
 # REPORT BUILDER
 # ─────────────────────────────────────────────────────────────
+
+def find_money_left(positions, sim_entry_note=None):
+    """
+    Find the most striking 'you left money on the table' examples — tokens
+    where the user exited well below the peak. These are the visceral,
+    convincing callouts that make the abstract swing number real.
+
+    Returns up to 3, ranked by how much was missed (in SOL terms at their size).
+    """
+    examples = []
+    for p in positions:
+        peak = p["peak_pct"]
+        actual = p["actual_pct"]
+        sol_in = p.get("sol_in", 0) or 0
+        # Only interesting if the token ran meaningfully past their exit
+        if peak >= 100 and peak - actual >= 80 and sol_in > 0:
+            # What TP1 (sell half at +100%) alone would have banked vs their actual
+            tp1_gain = sol_in * 0.5 * 1.0  # half the position at +100% = +0.5x position
+            actual_gain = sol_in * (actual / 100)
+            missed = tp1_gain - actual_gain
+            if missed > 0:
+                examples.append({
+                    "symbol": p.get("symbol") or p["token"][:6],
+                    "token": p["token"],
+                    "your_exit_pct": round(actual, 0),
+                    "peak_pct": round(peak, 0),
+                    "sol_in": round(sol_in, 3),
+                    "missed_sol": round(missed, 3),
+                })
+    examples.sort(key=lambda x: x["missed_sol"], reverse=True)
+    return examples[:3]
+
 
 def build_report(wallet, positions, days):
     n = len(positions)
@@ -498,6 +550,91 @@ def build_report(wallet, positions, days):
     written_insights = insights_engine.generate_insights(positions, summary, dist, timing)
     rule_set = insights_engine.generate_rules(positions, summary, timing)
 
+    # ── BIGGEST MISSED OPPORTUNITIES (per-token "you left money here") ──
+    # For each token, how much it ran past their actual exit. The most
+    # concrete, convincing, wallet-specific thing we can show.
+    missed = []
+    for p in positions:
+        peak = p["peak_pct"]
+        actual = p["actual_pct"]
+        # Only meaningful where the token ran well past their exit
+        if peak >= 100 and peak - actual >= 80 and p.get("sol_in", 0) > 0:
+            sol_in = p["sol_in"]
+            # what TP1 (sell half at +100%) alone would have banked vs actual
+            strat_val = sol_in * 0.5 * 2.0 + sol_in * 0.5 * (1 + min(peak, 500) / 100)
+            actual_val = sol_in * (1 + actual / 100)
+            left = strat_val - actual_val
+            if left > 0.01:
+                missed.append({
+                    "symbol": p.get("symbol") or p["token"][:6],
+                    "token": p["token"],
+                    "peak_pct": round(peak),
+                    "actual_pct": round(actual),
+                    "sol_in": round(sol_in, 3),
+                    "left_sol": round(left, 3),
+                })
+    missed.sort(key=lambda x: x["left_sol"], reverse=True)
+    biggest_misses = missed[:8]
+
+    # ── DEEP STATS (richer detail, especially for the paid all-time view) ──
+    sizes = [p["sol_in"] for p in positions if p.get("sol_in", 0) > 0]
+    hold_times = [p["hold_seconds"] for p in positions if p.get("hold_seconds", 0) > 0]
+    peaks = [p["peak_pct"] for p in positions]
+    win_holds = [p["hold_seconds"] for p in positions if p["net_sol"] > 0 and p.get("hold_seconds", 0) > 0]
+    loss_holds = [p["hold_seconds"] for p in positions if p["net_sol"] <= 0 and p.get("hold_seconds", 0) > 0]
+
+    def _med(xs):
+        s = sorted(xs)
+        if not s: return 0
+        m = len(s)//2
+        return s[m] if len(s) % 2 else (s[m-1]+s[m])/2
+
+    # day-of-week performance
+    dow = defaultdict(lambda: {"net": 0.0, "n": 0})
+    dow_names = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+    for p in positions:
+        d = datetime.fromtimestamp(p["first_buy_ts"], tz=timezone.utc).weekday()
+        dow[d]["net"] += p["net_sol"]; dow[d]["n"] += 1
+    dow_perf = [{"day": dow_names[d], "net": round(v["net"], 3), "n": v["n"]}
+                for d, v in sorted(dow.items())]
+
+    # biggest win and biggest loss (by net SOL)
+    by_net = sorted(positions, key=lambda x: x["net_sol"])
+    biggest_loss = by_net[0] if by_net else None
+    biggest_win = by_net[-1] if by_net else None
+
+    # total "left on table" across all trades
+    total_left = round(sum(m["left_sol"] for m in missed), 3)
+
+    deep_stats = {
+        "median_size_sol": round(_med(sizes), 3) if sizes else 0,
+        "avg_size_sol": round(sum(sizes)/len(sizes), 3) if sizes else 0,
+        "largest_size_sol": round(max(sizes), 3) if sizes else 0,
+        "median_hold_mins": round(_med(hold_times)/60, 1) if hold_times else 0,
+        "median_win_hold_mins": round(_med(win_holds)/60, 1) if win_holds else 0,
+        "median_loss_hold_mins": round(_med(loss_holds)/60, 1) if loss_holds else 0,
+        "median_peak_pct": round(_med(peaks)) if peaks else 0,
+        "best_peak_pct": round(max(peaks)) if peaks else 0,
+        "total_left_on_table_sol": total_left,
+        "tokens_pumped_100": sum(1 for p in positions if p["peak_pct"] >= 100),
+        "tokens_pumped_500": sum(1 for p in positions if p["peak_pct"] >= 500),
+        "tokens_pumped_1000": sum(1 for p in positions if p["peak_pct"] >= 1000),
+        "tokens_never_moved": sum(1 for p in positions if p["peak_pct"] == 0),
+        "avg_buys_per_token": round(sum(p.get("n_buys",1) for p in positions)/n, 2) if n else 0,
+        "tokens_averaged_down": sum(1 for p in positions if p.get("n_buys",1) > 1),
+        "dow_performance": dow_perf,
+        "biggest_win": {
+            "symbol": biggest_win.get("symbol") or biggest_win["token"][:6],
+            "net_sol": round(biggest_win["net_sol"], 3),
+            "peak_pct": round(biggest_win["peak_pct"]),
+        } if biggest_win else None,
+        "biggest_loss": {
+            "symbol": biggest_loss.get("symbol") or biggest_loss["token"][:6],
+            "net_sol": round(biggest_loss["net_sol"], 3),
+            "peak_pct": round(biggest_loss["peak_pct"]),
+        } if biggest_loss else None,
+    }
+
     return {
         "wallet": wallet,
         "timeframe": "7 days" if days else "all-time",
@@ -507,5 +644,8 @@ def build_report(wallet, positions, days):
         "timing": timing,
         "insights": written_insights,
         "rules": rule_set,
+        "biggest_misses": biggest_misses,
+        "deep_stats": deep_stats,
+        "is_paid": days is None,
         "trades": sorted(positions, key=lambda x: x["net_sol"], reverse=True),
     }

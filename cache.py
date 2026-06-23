@@ -45,6 +45,23 @@ def _connect():
             cached_at REAL NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS wallet_results (
+            wallet     TEXT NOT NULL,
+            days       INTEGER,                  -- NULL = all-time, 7 = preview
+            data       TEXT NOT NULL,
+            cached_at  REAL NOT NULL,
+            PRIMARY KEY (wallet, days)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS llm_summaries (
+            wallet     TEXT PRIMARY KEY,         -- all-time only; one per wallet
+            data       TEXT NOT NULL,
+            model      TEXT,
+            cached_at  REAL NOT NULL
+        )
+    """)
     return conn
 
 
@@ -86,8 +103,20 @@ def set_token_info(token, data):
         )
 
 
-# --- WALLET RESULTS (24h, in-memory — legitimately transient) --
+# --- WALLET RESULTS -------------------------------------------
+# All-time (days=None) is cached PERMANENTLY in SQLite — the underlying
+# history doesn't change, so the report is stable and reusable forever.
+# The 7-day preview (days=7) is a ROLLING window ("last 7 days"), so its
+# meaning changes daily — that one stays short-lived in memory only.
 def get_wallet_result(wallet, days):
+    if days is None:
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT data FROM wallet_results WHERE wallet = ? AND days IS NULL",
+                (wallet,),
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+    # rolling preview — transient in-memory with TTL
     key = f"wallet:{wallet}:{days}"
     entry = _wallet_store.get(key)
     if entry and entry[0] > time.time():
@@ -95,8 +124,47 @@ def get_wallet_result(wallet, days):
     return None
 
 def set_wallet_result(wallet, days, data):
+    if days is None:
+        with _lock, _connect() as conn:
+            conn.execute(
+                "INSERT INTO wallet_results (wallet, days, data, cached_at) "
+                "VALUES (?, NULL, ?, ?) "
+                "ON CONFLICT(wallet, days) DO UPDATE SET "
+                "data=excluded.data, cached_at=excluded.cached_at",
+                (wallet, json.dumps(data), time.time()),
+            )
+        return
     key = f"wallet:{wallet}:{days}"
     _wallet_store[key] = (time.time() + config.WALLET_RESULT_TTL, data)
+
+def clear_wallet_result(wallet):
+    """Manual invalidation — wipes cached all-time result + LLM summary for a wallet."""
+    with _lock, _connect() as conn:
+        conn.execute("DELETE FROM wallet_results WHERE wallet = ?", (wallet,))
+        conn.execute("DELETE FROM llm_summaries WHERE wallet = ?", (wallet,))
+    for k in list(_wallet_store.keys()):
+        if k.startswith(f"wallet:{wallet}:"):
+            _wallet_store.pop(k, None)
+
+
+# --- LLM SUMMARIES (permanent, all-time only) -----------------
+# Cache the xAI output per wallet forever, so we only ever pay for it once.
+def get_llm_summary(wallet):
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT data FROM llm_summaries WHERE wallet = ?", (wallet,)
+        ).fetchone()
+    return json.loads(row[0]) if row else None
+
+def set_llm_summary(wallet, data, model=""):
+    with _lock, _connect() as conn:
+        conn.execute(
+            "INSERT INTO llm_summaries (wallet, data, model, cached_at) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(wallet) DO UPDATE SET "
+            "data=excluded.data, model=excluded.model, cached_at=excluded.cached_at",
+            (wallet, json.dumps(data), model, time.time()),
+        )
 
 
 # --- RATE LIMITING (daily, in-memory by design) ----------------

@@ -23,6 +23,7 @@ import config
 import access
 import payments
 import emailer
+import xai_coach
 
 app = FastAPI(title="Playbook")
 
@@ -47,6 +48,25 @@ def _sanitise(obj):
     if isinstance(obj, list):
         return [_sanitise(v) for v in obj]
     return obj
+
+
+async def _attach_coaching(result, wallet):
+    """
+    Attach the premium xAI coaching narrative to an all-time report.
+    Cache-first: a given wallet is only ever sent to xAI once. Fails safe —
+    if anything goes wrong, the report is returned unchanged (rule-based).
+    """
+    wallet = (wallet or "").strip()
+    if not wallet:
+        return
+    cached = cache.get_llm_summary(wallet)
+    if cached:
+        result["ai_coaching"] = cached
+        return
+    coaching = await xai_coach.generate_coaching(result)
+    if coaching:
+        cache.set_llm_summary(wallet, coaching, model=config.XAI_MODEL)
+        result["ai_coaching"] = coaching
 
 
 # ── INFO ─────────────────────────────────────────────────────
@@ -128,6 +148,10 @@ async def analyse(
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
 
+    # Premium AI coaching narrative (paid all-time only, cached per wallet)
+    if days is None and config.XAI_ENABLED:
+        await _attach_coaching(result, wallet.strip())
+
     return _sanitise(result)
 
 
@@ -164,6 +188,10 @@ async def analyse_wallet_endpoint(request: Request):
 
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
+
+    # Premium AI coaching narrative (paid all-time only, cached per wallet)
+    if days is None and config.XAI_ENABLED:
+        await _attach_coaching(result, wallet)
 
     return _sanitise(result)
 

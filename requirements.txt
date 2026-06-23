@@ -1,6 +1,6 @@
-fastapi>=0.110.0
-uvicorn[standard]>=0.29.0
-aiohttp>=3.9.5
-pydantic>=2.8.0
-python-multipart>=0.0.9
-stripe>=10.0.0
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+aiohttp==3.9.1
+pydantic==2.5.3
+python-multipart==0.0.9
+stripe==8.5.0

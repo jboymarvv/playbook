@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Playbook — see what your exits cost you</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    /* === TERMINAL-AT-NIGHT PALETTE (committed dark) === */
+    --bg:          #14130F;   /* near-black, warm */
+    --bg-raised:   #1C1A15;   /* raised surfaces */
+    --bg-card:     #211E18;   /* cards */
+    --line:        #2E2A22;   /* hairlines */
+    --line-bright: #3A352B;
+
+    --ink:         #F3EEE3;   /* warm off-white text */
+    --ink-soft:    #B8B0A0;   /* secondary */
+    --ink-faint:   #837C6E;   /* tertiary, still ≥4.5 on bg */
+
+    --paper:       #F3EEE3;   /* the "notebook" accent — used sparingly */
+    --paper-ink:   #1A1813;
+
+    --green:       #4ADE80;   /* gains — bright on dark */
+    --green-dim:   #1E3A28;
+    --red:         #F87171;   /* losses */
+    --red-dim:     #3A1E1E;
+    --gold:        #E8B84B;   /* the signature accent — highlighter gold */
+    --gold-dim:    #3A2F12;
+    --blue:        #7AA2F7;
+
+    --font-display:'Instrument Serif', Georgia, serif;
+    --font-ui:     'Space Grotesk', system-ui, sans-serif;
+    --font-data:   'Geist Mono', ui-monospace, monospace;
+    --font-hand:   'Caveat', cursive;
+
+    --ease:        cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-soft:   cubic-bezier(0.16, 1, 0.3, 1);
+
+    --z-sticky: 90; --z-modal: 100;
+
+    --maxw: 1080px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  /* subtle grain + glow so the dark isn't flat */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(900px 500px at 70% -10%, rgba(232,184,75,0.06), transparent 70%),
+      radial-gradient(700px 600px at 10% 110%, rgba(122,162,247,0.05), transparent 70%);
+  }
+
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  ::selection { background: var(--gold); color: var(--bg); }
+
+  /* === NAV === */
+  .nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 0; position: relative;
+  }
+  .brand {
+    font-family: var(--font-hand); font-weight: 700;
+    font-size: 32px; color: var(--ink); letter-spacing: 0;
+    display: inline-flex; align-items: center; gap: 2px;
+  }
+  .brand-dot { color: var(--gold); }
+  .nav-cta {
+    font-family: var(--font-ui); font-weight: 600; font-size: 14px;
+    background: transparent; color: var(--ink); cursor: pointer;
+    border: 1px solid var(--line-bright); padding: 9px 16px; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: border-color 0.25s var(--ease), background 0.25s var(--ease), transform 0.2s var(--ease);
+  }
+  .nav-cta:hover { border-color: var(--gold); background: var(--gold-dim); }
+  .nav-cta:active { transform: scale(0.97); }
+  .nav-cta .price { color: var(--gold); font-family: var(--font-data); font-weight: 600; }
+
+  /* === HERO === */
+  .hero { padding: 56px 0 40px; position: relative; }
+  .hero-eyebrow {
+    font-family: var(--font-data); font-size: 13px; letter-spacing: 0.04em;
+    color: var(--gold); margin-bottom: 20px; display: flex; align-items: center; gap: 8px;
+  }
+  .hero-eyebrow::before { content: ""; width: 24px; height: 1px; background: var(--gold); display: inline-block; }
+  .hero h1 {
+    font-family: var(--font-display); font-weight: 400;
+    font-size: clamp(46px, 8vw, 92px); line-height: 0.98;
+    letter-spacing: -0.02em; color: var(--ink); max-width: 14ch;
+    text-wrap: balance;
+  }
+  .hero h1 em { font-style: italic; color: var(--gold); }
+  .hero-sub {
+    font-size: clamp(17px, 2vw, 20px); color: var(--ink-soft);
+    max-width: 52ch; margin-top: 24px; line-height: 1.5;
+  }
+  .hero-sub strong { color: var(--ink); font-weight: 500; }
+
+  /* the annotation — notebook spirit as a small accent, not the frame */
+  .hero-note {
+    font-family: var(--font-hand); font-size: 27px; color: var(--gold);
+    transform: rotate(-2.5deg); display: inline-block; margin-top: 20px;
+    position: relative; opacity: 0.95;
+  }
+
+  /* === UPLOAD PANEL === */
+  .panel {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 28px;
+    margin-top: 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel-glow {
+    position: absolute; top: -1px; left: 24px; right: 24px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    opacity: 0.5;
+  }
+  .panel-label {
+    font-family: var(--font-data); font-size: 12px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-faint); margin-bottom: 14px;
+  }
+
+  .dropzone {
+    border: 1.5px dashed var(--line-bright);
+    border-radius: 12px;
+    padding: 40px 24px; text-align: center; cursor: pointer;
+    transition: border-color 0.25s var(--ease), background 0.25s var(--ease);
+    position: relative;
+  }
+  .dropzone:hover, .dropzone.drag { border-color: var(--gold); background: var(--gold-dim); }
+  .dropzone.ready { border-color: var(--green); border-style: solid; background: var(--green-dim); }
+  .dropzone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .dropzone-icon { font-size: 30px; margin-bottom: 10px; opacity: 0.7; }
+  .dropzone-text { font-size: 16px; color: var(--ink); font-weight: 500; }
+  .dropzone-or { font-size: 13px; color: var(--ink-faint); font-weight: 400; }
+
+  .wallet-paste-input {
+    width: 100%; background: var(--bg); border: 1.5px dashed var(--line-bright);
+    border-radius: 12px; font-family: var(--font-data); font-size: 15px;
+    color: var(--ink); padding: 20px; outline: none; text-align: center;
+    transition: border-color 0.25s var(--ease), background 0.25s var(--ease);
+  }
+  .wallet-paste-input::placeholder { color: var(--ink-faint); }
+  .wallet-paste-input:focus { border-color: var(--gold); }
+  .wallet-paste-input.valid { border-style: solid; border-color: var(--green); background: var(--green-dim); }
+
+  .help-link {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 14px;
+    font-size: 14px; color: var(--blue); cursor: pointer; background: none; border: none;
+    font-family: var(--font-ui);
+  }
+  .help-details { margin-top: 14px; }
+  .help-details summary {
+    font-size: 14px; color: var(--blue); cursor: pointer; list-style: none;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .help-details summary::-webkit-details-marker { display: none; }
+  .help-arrow { transition: transform 0.2s var(--ease); }
+  .help-details[open] .help-arrow { transform: rotate(90deg); }
+  .help-steps { margin: 12px 0 0 18px; color: var(--ink-soft); font-size: 14px; line-height: 1.7; }
+  .help-steps a { color: var(--blue); }
+  .help-note { font-size: 13px; color: var(--ink-faint); margin-top: 8px; }
+
+  .action-row { display: flex; align-items: center; gap: 16px; margin-top: 22px; flex-wrap: wrap; }
+  .analyse-btn {
+    font-family: var(--font-ui); font-weight: 600; font-size: 16px;
+    background: var(--gold); color: var(--bg); border: none; cursor: pointer;
+    padding: 14px 32px; border-radius: 999px;
+    transition: transform 0.2s var(--ease), box-shadow 0.25s var(--ease), opacity 0.2s;
+    box-shadow: 0 0 0 0 rgba(232,184,75,0.4);
+  }
+  .analyse-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 24px -6px rgba(232,184,75,0.5); }
+  .analyse-btn:active:not(:disabled) { transform: translateY(0) scale(0.97); }
+  .analyse-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* === TIER SELECTOR === */
+  .tf-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+  @media (max-width: 640px) { .tf-cards { grid-template-columns: 1fr; } }
+  .tf-card {
+    display: flex; align-items: flex-start; gap: 14px;
+    background: var(--bg-card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 18px; cursor: pointer;
+    transition: border-color 0.25s var(--ease), transform 0.2s var(--ease), background 0.25s var(--ease);
+    position: relative;
+  }
+  .tf-card:hover { transform: translateY(-2px); border-color: var(--line-bright); }
+  .tf-card:active { transform: translateY(0) scale(0.99); }
+  .tf-card.active { border-color: var(--ink); }
+  .tf-card.premium.active { border-color: var(--gold); background: var(--gold-dim); }
+  .tf-card-check {
+    width: 20px; height: 20px; border: 2px solid var(--line-bright);
+    border-radius: 50%; flex-shrink: 0; margin-top: 2px; position: relative;
+    transition: border-color 0.2s var(--ease);
+  }
+  .tf-card.active .tf-card-check { border-color: var(--ink); }
+  .tf-card.premium.active .tf-card-check { border-color: var(--gold); }
+  .tf-card.active .tf-card-check::after {
+    content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--ink);
+    animation: pop 0.3s var(--ease);
+  }
+  .tf-card.premium.active .tf-card-check::after { background: var(--gold); }
+  @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
+  .tf-card-body { flex: 1; min-width: 0; }
+  .tf-card-title {
+    font-family: var(--font-ui); font-weight: 600; font-size: 16px; color: var(--ink);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .tf-card-tag {
+    font-family: var(--font-data); font-size: 10px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    background: var(--gold); color: var(--bg); padding: 2px 7px; border-radius: 4px;
+  }
+  .tf-card-desc { font-size: 13.5px; color: var(--ink-soft); margin-top: 4px; line-height: 1.45; }
+  .tf-card-price {
+    font-family: var(--font-data); font-weight: 600; font-size: 17px;
+    color: var(--ink); flex-shrink: 0;
+  }
+  .tf-card.premium .tf-card-price { color: var(--gold); }
+
+  .privacy { font-size: 13px; color: var(--ink-faint); margin-top: 18px; line-height: 1.5; }
+  .privacy strong { color: var(--ink-soft); }
+
+  /* === ERROR / PROGRESS === */
+  .error {
+    display: none; margin-top: 18px; padding: 14px 18px; border-radius: 10px;
+    background: var(--red-dim); border: 1px solid var(--red); color: var(--red);
+    font-size: 14px;
+  }
+  .error.show { display: block; }
+  .progress { display: none; margin-top: 22px; }
+  .progress.show { display: block; }
+  .progress-track { height: 4px; background: var(--line); border-radius: 999px; overflow: hidden; }
+  .progress-fill { height: 100%; width: 0%; background: var(--gold); border-radius: 999px; transition: width 0.4s var(--ease); }
+  .progress-step { font-family: var(--font-data); font-size: 13px; color: var(--ink-soft); margin-top: 10px; }
+
+  /* === RESULTS === */
+  .results { display: none; padding: 40px 0 80px; }
+  .results.show { display: block; }
+
+  .section-head {
+    font-family: var(--font-display); font-weight: 400;
+    font-size: clamp(28px, 4vw, 40px); letter-spacing: -0.02em;
+    color: var(--ink); margin: 56px 0 8px; text-wrap: balance;
+  }
+  .section-head:first-child { margin-top: 0; }
+  .section-sub { color: var(--ink-soft); font-size: 15px; margin-bottom: 24px; max-width: 60ch; }
+
+  /* VERDICT — the hero moment */
+  .verdict {
+    display: grid; grid-template-columns: 1.2fr 1fr; gap: 28px; align-items: stretch;
+    margin-top: 8px;
+  }
+  @media (max-width: 760px) { .verdict { grid-template-columns: 1fr; } }
+  .verdict-main {
+    background: linear-gradient(160deg, var(--bg-card), var(--bg-raised));
+    border: 1px solid var(--line); border-radius: 18px; padding: 32px;
+    position: relative; overflow: hidden;
+  }
+  .verdict-main::after {
+    content: ""; position: absolute; right: -60px; top: -60px; width: 200px; height: 200px;
+    background: radial-gradient(circle, var(--gold-dim), transparent 70%); opacity: 0.6;
+  }
+  .verdict-label {
+    font-family: var(--font-data); font-size: 12px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+  .verdict-big {
+    font-family: var(--font-display); font-weight: 400;
+    font-size: clamp(56px, 11vw, 104px); line-height: 0.95; letter-spacing: -0.03em;
+    margin: 10px 0; color: var(--green); font-variant-numeric: tabular-nums;
+  }
+  .verdict-big.negative { color: var(--red); }
+  .verdict-caption { color: var(--ink-soft); font-size: 15px; line-height: 1.5; max-width: 40ch; position: relative; }
+
+  .verdict-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .vstat {
+    background: var(--bg-card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px; display: flex; flex-direction: column; justify-content: center;
+  }
+  .vstat-val { font-family: var(--font-data); font-weight: 600; font-size: 26px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .vstat-val.green { color: var(--green); } .vstat-val.red { color: var(--red); }
+  .vstat-label { font-size: 12px; color: var(--ink-faint); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--font-data); }
+
+  /* CHARTS */
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 760px) { .chart-grid { grid-template-columns: 1fr; } }
+  .chart-box { background: var(--bg-raised); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+  .chart-box h3 { font-family: var(--font-ui); font-weight: 600; font-size: 15px; color: var(--ink); margin-bottom: 2px; }
+  .chart-box .chart-cap { font-size: 13px; color: var(--ink-faint); margin-bottom: 16px; }
+  .chart-canvas-wrap { height: 200px; position: relative; }
+
+  /* HOURS */
+  .hours-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 640px) { .hours-grid { grid-template-columns: 1fr; } }
+  .hours-col h3 { font-family: var(--font-ui); font-size: 14px; margin-bottom: 12px; color: var(--ink-soft); }
+  .hour-row { display: flex; align-items: center; gap: 12px; padding: 9px 14px; background: var(--bg-card); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; }
+  .hour-time { font-family: var(--font-data); font-weight: 600; font-size: 15px; min-width: 64px; }
+  .hour-time.good { color: var(--green); } .hour-time.bad { color: var(--red); }
+  .hour-detail { font-size: 13px; color: var(--ink-soft); }
+
+  /* INSIGHTS */
+  .insights { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .insight {
+    background: var(--bg-card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px; position: relative;
+  }
+  .insight.highlight { border-color: var(--gold); background: var(--gold-dim); }
+  .insight.good { border-color: var(--green-dim); }
+  .insight.bad { border-color: var(--red-dim); }
+  .insight-stat { font-family: var(--font-data); font-weight: 600; font-size: 30px; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1; margin-bottom: 8px; }
+  .insight.highlight .insight-stat { color: var(--gold); }
+  .insight.good .insight-stat { color: var(--green); }
+  .insight.bad .insight-stat { color: var(--red); }
+  .insight-body h4 { font-family: var(--font-ui); font-weight: 600; font-size: 15px; color: var(--ink); margin-bottom: 4px; }
+  .insight-body p { font-size: 13.5px; color: var(--ink-soft); line-height: 1.45; }
+
+  /* MISSES */
+  .misses-intro { margin-bottom: 24px; max-width: 60ch; display: flex; flex-direction: column; gap: 6px; }
+  .misses-total {
+    font-family: var(--font-display); font-weight: 400; font-size: clamp(40px, 7vw, 64px);
+    line-height: 1; color: var(--red); letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+  }
+  .misses-total-label { color: var(--ink-soft); font-size: 15px; line-height: 1.5; }
+  .miss-card {
+    display: flex; align-items: center; gap: 16px;
+    background: var(--bg-card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 20px; margin-bottom: 10px;
+    transition: border-color 0.25s var(--ease), transform 0.2s var(--ease), background 0.25s var(--ease);
+  }
+  .miss-card:hover { border-color: var(--red); transform: translateX(4px); background: var(--red-dim); }
+  .miss-rank {
+    font-family: var(--font-display); font-size: 26px; color: var(--ink-faint);
+    flex-shrink: 0; width: 38px; text-align: center; line-height: 1;
+  }
+  .miss-left { flex-shrink: 0; text-align: center; min-width: 92px; border-left: 1px solid var(--line); border-right: 1px solid var(--line); padding: 0 14px; }
+  .miss-left-sol { font-family: var(--font-data); font-weight: 600; font-size: 22px; color: var(--red); font-variant-numeric: tabular-nums; }
+  .miss-left-label { font-family: var(--font-data); font-size: 11px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.05em; }
+  .miss-body { flex: 1; min-width: 0; }
+  .miss-token { font-family: var(--font-ui); font-weight: 600; font-size: 17px; color: var(--ink); }
+  .miss-detail { font-size: 13px; color: var(--ink-soft); margin-top: 3px; font-family: var(--font-data); }
+  .miss-peak { color: var(--green); } .miss-exit { color: var(--red); }
+
+  /* RULES */
+  .rules-intro { color: var(--ink-soft); font-size: 15px; margin-bottom: 24px; max-width: 62ch; }
+  .rule-group { margin-bottom: 20px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg-raised); }
+  .rule-group-head { display: flex; align-items: center; gap: 12px; padding: 16px 22px; border-bottom: 1px solid var(--line); }
+  .rule-group.enter .rule-group-head { background: linear-gradient(90deg, rgba(122,162,247,0.12), transparent); }
+  .rule-group.exit .rule-group-head { background: linear-gradient(90deg, rgba(74,222,128,0.10), transparent); }
+  .rule-group.discipline .rule-group-head { background: linear-gradient(90deg, rgba(232,184,75,0.12), transparent); }
+  .rule-group-icon {
+    font-family: var(--font-ui); font-weight: 600; font-size: 16px;
+    width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .rule-group.enter .rule-group-icon { background: rgba(122,162,247,0.2); color: var(--blue); }
+  .rule-group.exit .rule-group-icon { background: rgba(74,222,128,0.18); color: var(--green); }
+  .rule-group.discipline .rule-group-icon { background: rgba(232,184,75,0.2); color: var(--gold); }
+  .rule-group-title { font-family: var(--font-display); font-weight: 400; font-size: 24px; letter-spacing: -0.01em; color: var(--ink); }
+  .rule-item { display: flex; gap: 14px; padding: 15px 22px; border-bottom: 1px solid var(--line); }
+  .rule-item:last-child { border-bottom: none; }
+  .rule-check { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--bg); margin-top: 1px; }
+  .rule-group.enter .rule-check { background: var(--blue); }
+  .rule-group.exit .rule-check { background: var(--green); }
+  .rule-group.discipline .rule-check { background: var(--gold); }
+  .rule-body { flex: 1; }
+  .rule-text { font-family: var(--font-ui); font-weight: 600; font-size: 15.5px; color: var(--ink); }
+  .rule-reason { font-size: 13.5px; color: var(--ink-soft); margin-top: 3px; line-height: 1.45; }
+  .rule-more {
+    display: block; width: 100%; text-align: left;
+    background: none; border: none; border-top: 1px solid var(--line);
+    padding: 15px 22px; cursor: pointer;
+    font-family: var(--font-ui); font-weight: 500; font-size: 14px; color: var(--ink-soft);
+    transition: color 0.2s var(--ease), background 0.2s var(--ease);
+  }
+  .rule-more:hover { color: var(--gold); background: rgba(232,184,75,0.04); }
+
+  /* DEEP STATS */
+  #deepStats { display: flex; flex-direction: column; gap: 28px; }
+  .deep-group-title { font-family: var(--font-display); font-weight: 400; font-size: 24px; letter-spacing: -0.01em; color: var(--ink); margin-bottom: 14px; }
+  .deep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .deep-stat { background: var(--bg-card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .deep-stat-val { font-family: var(--font-data); font-weight: 600; font-size: 22px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .deep-stat-val.green { color: var(--green); } .deep-stat-val.red { color: var(--red); }
+  .deep-stat-label { font-size: 12px; color: var(--ink-faint); margin-top: 5px; }
+  .dow-row { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-family: var(--font-data); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .dow-row:last-child { border-bottom: none; }
+  .dow-name { width: 42px; font-weight: 600; color: var(--ink); }
+  .dow-bar-wrap { flex: 1; height: 14px; background: var(--bg-card); position: relative; border-radius: 3px; overflow: hidden; }
+  .dow-bar { position: absolute; top: 0; bottom: 0; }
+  .dow-bar.pos { background: var(--green); left: 50%; } .dow-bar.neg { background: var(--red); right: 50%; }
+  .dow-center { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--line-bright); }
+  .dow-val { width: 78px; text-align: right; font-weight: 600; }
+  .dow-val.green { color: var(--green); } .dow-val.red { color: var(--red); }
+
+  /* UPGRADE BANNER */
+  .upgrade-banner {
+    margin: 40px 0; padding: 32px; border-radius: 18px;
+    background: linear-gradient(150deg, var(--gold-dim), var(--bg-card));
+    border: 1px solid var(--gold); text-align: center; position: relative; overflow: hidden;
+  }
+  .upgrade-banner-head { font-family: var(--font-display); font-weight: 400; font-size: clamp(26px, 4vw, 36px); color: var(--ink); letter-spacing: -0.02em; }
+  .upgrade-banner-sub { color: var(--ink-soft); font-size: 15px; max-width: 50ch; margin: 12px auto 20px; line-height: 1.5; }
+  .upgrade-banner-sub strong { color: var(--ink); }
+  .upgrade-banner-list { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 22px; font-family: var(--font-data); font-size: 13px; color: var(--gold); }
+  .upgrade-banner-btn {
+    font-family: var(--font-ui); font-weight: 600; font-size: 16px;
+    background: var(--gold); color: var(--bg); border: none; padding: 14px 32px; border-radius: 999px; cursor: pointer;
+    transition: transform 0.2s var(--ease), box-shadow 0.25s var(--ease);
+  }
+  .upgrade-banner-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px -6px rgba(232,184,75,0.5); }
+  .upgrade-banner-btn:active { transform: scale(0.97); }
+  .upgrade-banner-note { font-size: 13px; color: var(--ink-faint); margin-top: 12px; }
+
+  /* UPSELL (bottom) */
+  .upsell { margin: 40px 0; padding: 28px; border-radius: 16px; background: var(--bg-raised); border: 1px solid var(--line); text-align: center; }
+  .upsell h3 { font-family: var(--font-display); font-weight: 400; font-size: 28px; color: var(--ink); }
+  .upsell p { color: var(--ink-soft); margin: 10px 0 16px; }
+  .upsell-benefits { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 18px; font-family: var(--font-data); font-size: 13px; color: var(--ink-soft); }
+  .upsell-btn { font-family: var(--font-ui); font-weight: 600; font-size: 16px; background: var(--gold); color: var(--bg); border: none; padding: 13px 30px; border-radius: 999px; cursor: pointer; transition: transform 0.2s var(--ease); }
+  .upsell-btn:active { transform: scale(0.97); }
+  .upsell-btn .price { font-family: var(--font-data); }
+
+  /* EMAIL BLOCK */
+  .email-block { margin: 40px 0; padding: 26px; border-radius: 16px; background: var(--bg-raised); border: 1px solid var(--line); text-align: center; }
+  .email-head { font-family: var(--font-display); font-weight: 400; font-size: 26px; color: var(--ink); }
+  .email-sub { color: var(--ink-soft); font-size: 14px; margin: 8px 0 16px; }
+  .email-row { display: flex; gap: 10px; justify-content: center; max-width: 440px; margin: 0 auto; flex-wrap: wrap; }
+  .email-input { flex: 1; min-width: 200px; background: var(--bg); border: 1px solid var(--line-bright); border-radius: 10px; font-family: var(--font-ui); font-size: 14px; color: var(--ink); padding: 12px 14px; outline: none; }
+  .email-input:focus { border-color: var(--gold); }
+  .email-btn { font-family: var(--font-ui); font-weight: 600; font-size: 15px; background: var(--gold); color: var(--bg); border: none; padding: 12px 24px; border-radius: 10px; cursor: pointer; transition: transform 0.2s var(--ease); }
+  .email-btn:active { transform: scale(0.97); }
+  .email-note { font-size: 12px; color: var(--ink-faint); margin-top: 12px; }
+
+  /* STICKY CTA */
+  .sticky-cta {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%) translateY(150%);
+    z-index: var(--z-sticky); display: none; align-items: center; gap: 16px;
+    background: var(--bg-card); border: 1px solid var(--gold); border-radius: 999px;
+    padding: 10px 12px 10px 22px; box-shadow: 0 12px 40px -8px rgba(0,0,0,0.6);
+    transition: transform 0.4s var(--ease);
+    max-width: calc(100vw - 32px);
+  }
+  .sticky-cta.show { display: flex; transform: translateX(-50%) translateY(0); }
+  .sticky-cta-text { font-size: 14px; color: var(--ink-soft); }
+  .sticky-cta-text strong { color: var(--gold); }
+  .sticky-cta-btn { font-family: var(--font-ui); font-weight: 600; font-size: 14px; background: var(--gold); color: var(--bg); border: none; padding: 9px 18px; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: transform 0.2s var(--ease); }
+  .sticky-cta-btn:active { transform: scale(0.95); }
+  .sticky-cta-close { background: none; border: none; color: var(--ink-faint); font-size: 20px; cursor: pointer; line-height: 1; padding: 0 4px; }
+  .sticky-cta-close:hover { color: var(--ink); }
+  @media (max-width: 560px) { .sticky-cta-text { display: none; } }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: var(--z-modal);
+    background: rgba(10,9,7,0.7); backdrop-filter: blur(6px);
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.show { display: flex; animation: fadeIn 0.25s var(--ease); }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .modal-card {
+    background: var(--bg-raised); border: 1px solid var(--line-bright); border-radius: 18px;
+    max-width: 460px; width: 100%; padding: 30px; position: relative;
+    animation: modalRise 0.35s var(--ease);
+  }
+  @keyframes modalRise { from { opacity: 0; transform: translateY(20px) scale(0.97); } to { opacity: 1; transform: none; } }
+  .modal-close { position: absolute; top: 16px; right: 18px; background: none; border: none; color: var(--ink-faint); font-size: 26px; cursor: pointer; line-height: 1; }
+  .modal-close:hover { color: var(--ink); }
+  .modal-title { font-family: var(--font-display); font-weight: 400; font-size: 30px; color: var(--ink); letter-spacing: -0.02em; }
+  .modal-sub { color: var(--ink-soft); font-size: 14px; margin: 6px 0 22px; }
+  .wallet-confirm { margin-bottom: 20px; }
+  .wallet-confirm-label { font-family: var(--font-data); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); display: block; margin-bottom: 8px; }
+  .checkout-wallet-input { width: 100%; background: var(--bg); border: 1px solid var(--line-bright); border-radius: 10px; font-family: var(--font-data); font-size: 13px; color: var(--ink); padding: 12px; outline: none; }
+  .checkout-wallet-input:focus { border-color: var(--gold); }
+  .wallet-confirm-note { font-size: 12px; color: var(--ink-faint); margin-top: 6px; }
+  .product-choice { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+  .product-option { display: flex; align-items: center; gap: 12px; padding: 14px; background: var(--bg-card); border: 1px solid var(--line); border-radius: 12px; cursor: pointer; transition: border-color 0.2s var(--ease); }
+  .product-option.active { border-color: var(--gold); background: var(--gold-dim); }
+  .product-radio { width: 18px; height: 18px; border: 2px solid var(--line-bright); border-radius: 50%; flex-shrink: 0; position: relative; }
+  .product-option.active .product-radio { border-color: var(--gold); }
+  .product-option.active .product-radio::after { content: ""; position: absolute; inset: 3px; background: var(--gold); border-radius: 50%; }
+  .product-info { flex: 1; display: flex; flex-direction: column; }
+  .product-name { font-family: var(--font-ui); font-weight: 600; font-size: 14px; color: var(--ink); }
+  .product-desc { font-size: 12.5px; color: var(--ink-soft); }
+  .product-price { font-family: var(--font-data); font-weight: 600; font-size: 16px; color: var(--ink); }
+  .pay-buttons { display: flex; gap: 10px; }
+  .pay-btn { flex: 1; padding: 14px; font-family: var(--font-ui); font-weight: 600; font-size: 15px; border: none; border-radius: 10px; cursor: pointer; transition: transform 0.2s var(--ease); }
+  .pay-btn:active { transform: scale(0.97); }
+  .pay-card { background: var(--ink); color: var(--bg); }
+  .pay-sol { background: var(--gold); color: var(--bg); }
+  .pay-error { font-size: 13px; color: var(--red); margin-top: 12px; text-align: center; min-height: 16px; }
+
+  /* FOOTER */
+  .footer { padding: 30px 0 40px; text-align: center; color: var(--ink-faint); font-size: 13px; border-top: 1px solid var(--line); margin-top: 40px; }
+
+  /* SCROLL REVEAL */
+  @keyframes rise { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+  .reveal { opacity: 0; }
+  .reveal.in { animation: rise 0.6s var(--ease) forwards; }
+  .anim-section { animation: rise 0.5s var(--ease) both; }
+  .anim-item { opacity: 0; animation: rise 0.45s var(--ease) forwards; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    .reveal { opacity: 1 !important; }
+    html { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+
+<!-- STICKY CTA -->
+<div class="sticky-cta" id="stickyCta">
+  <span class="sticky-cta-text">7-day preview — unlock your <strong>full all-time report</strong></span>
+  <button class="sticky-cta-btn" onclick="openCheckout()">Get it · <span id="stickyPrice">$10</span></button>
+  <button class="sticky-cta-close" onclick="dismissSticky()" aria-label="Dismiss">×</button>
+</div>
+
+<div class="wrap">
+
+  <!-- NAV -->
+  <nav class="nav">
+    <div class="brand">Playbook<span class="brand-dot">.</span></div>
+    <button class="nav-cta" onclick="openCheckout()">All-time report <span class="price" id="headerPrice">$10</span></button>
+  </nav>
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-eyebrow">Solana memecoin trade analysis</div>
+    <h1>Your picks were fine.<br>Your <em>exits</em> cost you.</h1>
+    <p class="hero-sub">Upload your trade history and Playbook replays every position against <strong>real candle data</strong> — showing exactly where you sold too early, and the rules that would've kept you in.</p>
+    <div class="hero-note">built from my own bad exits ↓</div>
+  </header>
+
+  <!-- UPLOAD PANEL -->
+  <section class="panel">
+    <div class="panel-glow"></div>
+    <div class="panel-label">Your trade history (CSV)</div>
+
+    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose CSV file or drop here">
+      <input type="file" id="csvFile" accept=".csv" aria-label="Solscan CSV file">
+      <div class="dropzone-icon">↑</div>
+      <div class="dropzone-text" id="dropzoneText">Drop your Solscan CSV here<br><span class="dropzone-or">or click to choose a file</span></div>
+    </div>
+
+    <details class="help-details">
+      <summary>how do I get my CSV? <span class="help-arrow">›</span></summary>
+      <ol class="help-steps">
+        <li>Go to <a href="https://solscan.io" target="_blank" rel="noopener">solscan.io</a> and search your wallet address.</li>
+        <li>Open the <strong>Activities</strong> tab → <strong>DeFi Activities</strong>.</li>
+        <li>Click <strong>Export</strong> (top-right) and download the CSV.</li>
+        <li>Drop that file into the box above.</li>
+      </ol>
+      <p class="help-note">Free, takes about 60 seconds. We never see your wallet directly — only the trades you choose to share.</p>
+    </details>
+
+    <div class="action-row">
+      <button class="analyse-btn" id="analyseBtn" onclick="runAnalysis()" disabled>Analyse my trades</button>
+    </div>
+
+    <div class="tf-cards">
+      <div class="tf-card active" data-tf="7d" onclick="setTimeframe('7d', this)">
+        <div class="tf-card-check"></div>
+        <div class="tf-card-body">
+          <div class="tf-card-title">7-Day Preview</div>
+          <div class="tf-card-desc">Free. A full analysis of your last 7 days of trading.</div>
+        </div>
+        <div class="tf-card-price">Free</div>
+      </div>
+      <div class="tf-card premium" data-tf="all" onclick="setTimeframe('all', this)">
+        <div class="tf-card-check"></div>
+        <div class="tf-card-body">
+          <div class="tf-card-title">Full All-Time Report <span class="tf-card-tag">best value</span></div>
+          <div class="tf-card-desc">Every trade you've ever made + your complete personalised playbook.</div>
+        </div>
+        <div class="tf-card-price" id="tfAllPrice">$10</div>
+      </div>
+    </div>
+
+    <p class="privacy"><strong>Your CSV stays private</strong> — processed in memory for this one analysis, then dropped. We don't store your trades, share them, or sell them.</p>
+
+    <div class="error" id="error"></div>
+    <div class="progress" id="progress">
+      <div class="progress-track"><div class="progress-fill" id="pbarFill"></div></div>
+      <div class="progress-step" id="pstep">Fetching your trades…</div>
+    </div>
+  </section>
+
+  <!-- CHECKOUT MODAL -->
+  <div class="modal-overlay" id="checkoutModal">
+    <div class="modal-card">
+      <button class="modal-close" onclick="closeCheckout()" aria-label="Close">×</button>
+      <h3 class="modal-title">Unlock your all-time report</h3>
+      <p class="modal-sub">See every trade you've ever made, not just the last 7 days.</p>
+      <div class="wallet-confirm">
+        <label class="wallet-confirm-label" for="checkoutWallet">Confirm your wallet</label>
+        <input type="text" id="checkoutWallet" class="checkout-wallet-input" placeholder="paste the wallet this report is for…" spellcheck="false" autocomplete="off">
+        <p class="wallet-confirm-note">Access is tied to this address. Double-check it's right.</p>
+      </div>
+      <div class="product-choice">
+        <label class="product-option active" id="optOnetime" onclick="selectProduct('onetime', this)">
+          <span class="product-radio"></span>
+          <span class="product-info">
+            <span class="product-name">Full all-time report</span>
+            <span class="product-desc">Every trade you've ever made. One payment, yours to keep.</span>
+          </span>
+          <span class="product-price" id="priceOnetime">$10</span>
+        </label>
+        <label class="product-option" id="optSub" style="display:none;" onclick="selectProduct('sub', this)">
+          <span class="product-radio"></span>
+          <span class="product-info">
+            <span class="product-name">Monthly tracking</span>
+            <span class="product-desc">All-time + track your progress over time.</span>
+          </span>
+          <span class="product-price" id="priceSub">$10/mo</span>
+        </label>
+      </div>
+      <div class="pay-buttons">
+        <button class="pay-btn pay-card" onclick="startCheckout('stripe')">Pay with card</button>
+        <button class="pay-btn pay-sol" onclick="startCheckout('helio')">Pay with Solana</button>
+      </div>
+      <p class="pay-error" id="payError"></p>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="results" id="results">
+
+    <h2 class="section-head">The verdict</h2>
+    <div class="verdict">
+      <div class="verdict-main" id="swingCard">
+        <div class="verdict-label">If you'd used the strategy</div>
+        <div class="verdict-big" id="swingBig">+0 SOL</div>
+        <div class="verdict-caption" id="swingCaption"></div>
+      </div>
+      <div class="verdict-stats">
+        <div class="vstat"><div class="vstat-val" id="sTrades">0</div><div class="vstat-label">Trades</div></div>
+        <div class="vstat"><div class="vstat-val" id="sWinRate">0%</div><div class="vstat-label">Win rate</div></div>
+        <div class="vstat"><div class="vstat-val" id="sActual">0</div><div class="vstat-label">Your result</div></div>
+        <div class="vstat"><div class="vstat-val" id="sStrategy">0</div><div class="vstat-label">With strategy</div></div>
+      </div>
+    </div>
+
+    <h2 class="section-head">Where the tokens went</h2>
+    <div class="section-sub">How far your tokens actually ran — from real candle data, not your exits.</div>
+    <div class="chart-grid">
+      <div class="chart-box">
+        <h3>Peak distribution</h3>
+        <div class="chart-cap">how far each token pumped from your entry</div>
+        <div class="chart-canvas-wrap"><canvas id="peakChart"></canvas></div>
+      </div>
+      <div class="chart-box">
+        <h3>Hit rates</h3>
+        <div class="chart-cap">% of tokens that reached each level</div>
+        <div class="chart-canvas-wrap"><canvas id="hitChart"></canvas></div>
+      </div>
+    </div>
+
+    <h2 class="section-head">Your hot &amp; cold hours</h2>
+    <div class="hours-grid">
+      <div class="hours-col">
+        <h3>Your sharpest hours</h3>
+        <ul id="bestHours" style="list-style:none;"></ul>
+      </div>
+      <div class="hours-col">
+        <h3>Your worst hours</h3>
+        <ul id="worstHours" style="list-style:none;"></ul>
+      </div>
+    </div>
+
+    <h2 class="section-head">What we found</h2>
+    <div class="insights" id="insightsList"></div>
+
+    <div id="missesSection" style="display:none;">
+      <h2 class="section-head">Where you left money</h2>
+      <p class="misses-intro" id="missesIntro"></p>
+      <div id="missesList"></div>
+    </div>
+
+    <h2 class="section-head">Your rules</h2>
+    <p class="rules-intro">Your personal playbook, built from your own trades. Every rule below is here because of something specific in your history — not generic advice.</p>
+    <div id="rulesContainer"></div>
+
+    <div id="deepSection" style="display:none;">
+      <h2 class="section-head">The deep dive</h2>
+      <div id="deepStats"></div>
+    </div>
+
+    <!-- UPGRADE BANNER (free only) -->
+    <div class="upgrade-banner" id="upgradeBanner" style="display:none;">
+      <div class="upgrade-banner-head">You're seeing 7 days. The full story is bigger.</div>
+      <p class="upgrade-banner-sub">Your <strong>all-time report</strong> reveals every trade you've ever made — the complete picture of what your exits have really cost you, and your full personalised playbook.</p>
+      <div class="upgrade-banner-list"><span>Every trade, all-time</span><span>Your complete rule set</span><span>Full peak &amp; exit analysis</span></div>
+      <button class="upgrade-banner-btn" onclick="openCheckout()">Unlock my all-time report · <span id="bannerPrice">$10</span></button>
+      <div class="upgrade-banner-note">One payment. Yours to keep. Takes 60 seconds.</div>
+    </div>
+
+    <!-- UPSELL (free only) -->
+    <div class="upsell" id="upsell">
+      <h3>This is just 7 days.</h3>
+      <p>Unlock your <strong>complete all-time report</strong> — every trade you've ever made, in one go.</p>
+      <div class="upsell-benefits"><span>Every trade, all-time</span><span>Full peak analysis</span><span>Your complete playbook</span></div>
+      <button class="upsell-btn" onclick="openCheckout()">Unlock all-time · <span class="price" id="upsellPrice">$10</span></button>
+    </div>
+
+    <!-- EMAIL (paid only) -->
+    <div class="email-block" id="emailBlock" style="display:none;">
+      <h3 class="email-head">Want a copy in your inbox?</h3>
+      <p class="email-sub">We'll email you this report so you can come back to it any time.</p>
+      <div class="email-row">
+        <input type="email" id="emailInput" class="email-input" placeholder="you@email.com" autocomplete="email">
+        <button class="email-btn" id="emailBtn" onclick="sendReportEmail()">Send it</button>
+      </div>
+      <p class="email-note" id="emailNote">We use your email only to send this once — never stored, shared, or sold.</p>
+    </div>
+
+  </div>
+
+  <div class="footer">On-chain data only · No wallet connect · Built for Solana traders</div>
+
+</div>
+<script>
+  // Animated number count-up for the verdict (reduced-motion safe)
+  function countUp(el, target, suffix, signed) {
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const fmt = v => (signed && v >= 0 ? "+" : "") + (Math.round(v * 100) / 100) + suffix;
+    if (reduce) { el.textContent = fmt(target); return; }
+    const dur = 900, t0 = performance.now();
+    function step(now) {
+      const p = Math.min((now - t0) / dur, 1);
+      const eased = 1 - Math.pow(1 - p, 4); // ease-out-quart
+      el.textContent = fmt(target * eased);
+      if (p < 1) requestAnimationFrame(step);
+      else el.textContent = fmt(target);
+    }
+    requestAnimationFrame(step);
+  }
+
+  // ===== CONFIG =================================================
+  // Change this to your deployed backend URL once it's live.
+  const API_URL = "http://localhost:8000";
+
+  // ===== STATE ==================================================
+  let timeframe = "7d";
+  let selectedFile = null;
+  let peakChartInstance = null;
+  let hitChartInstance  = null;
+  let paidWallet = null;
+  let paymentsEnabled = false;
+
+  // ===== INIT ===================================================
+  (function(){ const d = document.getElementById('todayDate'); if (d) d.textContent =
+    new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' }); })();
+
+  // Restore a previously-used wallet (so returning from checkout works)
+  paidWallet = localStorage_get('paidWallet');
+
+  // Load pricing + whether payments are on
+  fetch(API_URL + "/pricing").then(r => r.json()).then(p => {
+    paymentsEnabled = !!p.payments_enabled;
+    window._onetimePrice = p.onetime || "$10";
+    window._emailEnabled = !!p.email_enabled;
+    if (p.onetime) {
+      const ids = ['priceOnetime', 'upsellPrice', 'headerPrice', 'tfAllPrice', 'bannerPrice', 'rulesUnlockPrice', 'stickyPrice'];
+      ids.forEach(id => { const e = document.getElementById(id); if (e) e.textContent = p.onetime; });
+    }
+    if (p.sub) document.getElementById('priceSub').textContent = p.sub;
+    // Subscription is kept in back pocket — only show it if explicitly enabled
+    const optSub = document.getElementById('optSub');
+    if (optSub) optSub.style.display = p.sub_enabled ? 'flex' : 'none';
+  }).catch(() => {});
+
+  // If returning from a successful checkout (?paid=1&wallet=...), remember it
+  (function handleReturn() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('paid') === '1' && params.get('wallet')) {
+      paidWallet = params.get('wallet');
+      localStorage_set('paidWallet', paidWallet);
+      // clean the URL
+      window.history.replaceState({}, '', window.location.pathname);
+      // nudge them to re-run all-time now that they've paid
+      const note = document.getElementById('error');
+      if (note) {
+        note.textContent = "✓ Payment received. Select all-time and analyse to see your full report.";
+        note.classList.add('show');
+        note.style.background = 'var(--green-soft)';
+        note.style.borderColor = 'var(--green)';
+        note.style.color = 'var(--green)';
+      }
+    }
+  })();
+
+  // File input handling
+  const fileInput = document.getElementById('csvFile');
+  const dropzone  = document.getElementById('dropzone');
+  const dzText    = document.getElementById('dropzoneText');
+  const btn       = document.getElementById('analyseBtn');
+
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
+  });
+
+  ['dragenter','dragover'].forEach(ev => {
+    dropzone.addEventListener(ev, e => {
+      e.preventDefault(); e.stopPropagation();
+      dropzone.classList.add('drag');
+    });
+  });
+  ['dragleave','dragend','drop'].forEach(ev => {
+    dropzone.addEventListener(ev, e => {
+      e.preventDefault(); e.stopPropagation();
+      dropzone.classList.remove('drag');
+    });
+  });
+  dropzone.addEventListener('drop', e => {
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  function handleFile(f) {
+    if (!f.name.toLowerCase().endsWith('.csv')) {
+      showError("That doesn't look like a CSV file. Please upload your Solscan .csv export.");
+      return;
+    }
+    selectedFile = f;
+    dropzone.classList.add('ready');
+    dzText.innerHTML = `✓ <strong>${escapeHtml(f.name)}</strong><br><span class="dropzone-or">${(f.size/1024).toFixed(1)} KB · click to change</span>`;
+    btn.disabled = false;
+    document.getElementById('error').classList.remove('show');
+  }
+
+  // ===== HANDLERS ===============================================
+  function setTimeframe(tf, el) {
+    timeframe = tf;
+    document.querySelectorAll('.tf-card').forEach(o => o.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  async function runAnalysis() {
+    if (!selectedFile) { showError("Choose your Solscan CSV first."); return; }
+
+    // All-time is premium — check access first (when payments are on)
+    if (timeframe === "all" && paymentsEnabled) {
+      const w = paidWallet || "";
+      if (!w) { openCheckout(); return; }
+      try {
+        const ar = await fetch(API_URL + "/access/" + encodeURIComponent(w));
+        const adata = await ar.json();
+        if (!adata.access) { openCheckout(); return; }
+      } catch (e) { openCheckout(); return; }
+    }
+
+    btn.disabled = true; btn.textContent = "Working…";
+    const finishProgress = showProgress();
+    document.getElementById('error').classList.remove('show');
+    document.getElementById('results').classList.remove('show');
+
+    try {
+      const form = new FormData();
+      form.append('file', selectedFile);
+      form.append('timeframe', timeframe);
+      if (paidWallet) form.append('wallet', paidWallet);
+
+      const res = await fetch(API_URL + "/analyse", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      finishProgress();
+      if (res.status === 402) { showError(""); openCheckout(); return; }
+      if (!res.ok) { showError(data.detail || "Analysis failed."); return; }
+      setTimeout(() => renderResults(data), 400);
+    } catch (e) {
+      finishProgress();
+      showError("Couldn't reach the analysis server. Is the backend running?");
+    } finally {
+      btn.disabled = false; btn.textContent = "Analyse";
+    }
+  }
+
+  // ===== CHECKOUT ===============================================
+  let chosenProduct = "onetime";
+
+  function openCheckout() {
+    document.getElementById('checkoutModal').classList.add('show');
+    document.getElementById('payError').textContent = "";
+  }
+  function closeCheckout() {
+    document.getElementById('checkoutModal').classList.remove('show');
+  }
+  function selectProduct(product, el) {
+    chosenProduct = product;
+    document.querySelectorAll('.product-option').forEach(o => o.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  async function startCheckout(method) {
+    const wallet = document.getElementById('checkoutWallet').value.trim();
+    const errEl = document.getElementById('payError');
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wallet)) {
+      errEl.textContent = "Please paste a valid Solana wallet address.";
+      return;
+    }
+    errEl.textContent = "Opening checkout…";
+    try {
+      const res = await fetch(API_URL + "/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet, product: chosenProduct, method }),
+      });
+      const data = await res.json();
+      if (!res.ok) { errEl.textContent = data.detail || "Checkout failed."; return; }
+      // Remember the wallet so when they come back, analysis runs
+      paidWallet = wallet;
+      localStorage_set('paidWallet', wallet);
+      window.location.href = data.url;
+    } catch (e) {
+      errEl.textContent = "Couldn't reach the payment server.";
+    }
+  }
+
+  // small helper: localStorage isn't available in some embedded contexts
+  function localStorage_set(k, v) { try { window.localStorage.setItem(k, v); } catch(e){} }
+  function localStorage_get(k) { try { return window.localStorage.getItem(k); } catch(e){ return null; } }
+
+  // ===== EMAIL REPORT (paid) ====================================
+  async function sendReportEmail() {
+    const email = document.getElementById('emailInput').value.trim();
+    const note = document.getElementById('emailNote');
+    const wallet = paidWallet || (document.getElementById('checkoutWallet') ? document.getElementById('checkoutWallet').value.trim() : "");
+    if (!email || email.indexOf('@') < 1) { note.textContent = "Please enter a valid email."; note.style.color = "var(--red)"; return; }
+    if (!wallet) { note.textContent = "Couldn't find your wallet — re-run the report."; note.style.color = "var(--red)"; return; }
+
+    const btn = document.getElementById('emailBtn');
+    btn.disabled = true; btn.textContent = "Sending…";
+    try {
+      const res = await fetch(API_URL + "/email-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet, email, summary: window._lastSummary || {} }),
+      });
+      const data = await res.json();
+      if (!res.ok) { note.textContent = data.detail || "Couldn't send."; note.style.color = "var(--red)"; return; }
+      note.textContent = "✓ Sent — check your inbox.";
+      note.style.color = "var(--green)";
+      btn.textContent = "Sent ✓";
+    } catch (e) {
+      note.textContent = "Couldn't reach the server.";
+      note.style.color = "var(--red)";
+    } finally {
+      setTimeout(() => { btn.disabled = false; if (btn.textContent === "Sending…") btn.textContent = "Send it"; }, 1500);
+    }
+  }
+
+  function showProgress() {
+    const steps = [
+      "Fetching your trades…",
+      "Pulling candle data for each token…",
+      "Running the strategy simulation…",
+      "Building your report…",
+    ];
+    const el = document.getElementById('progress');
+    const fill = document.getElementById('pbarFill');
+    const step = document.getElementById('pstep');
+    el.classList.add('show');
+    let i = 0, pct = 0;
+    const iv = setInterval(() => {
+      pct = Math.min(pct + Math.random() * 14, 92);
+      fill.style.width = pct + "%";
+      if (Math.random() > 0.55 && i < steps.length - 1) {
+        i++; step.textContent = steps[i];
+      }
+    }, 800);
+    return () => {
+      clearInterval(iv);
+      fill.style.width = "100%";
+      setTimeout(() => el.classList.remove('show'), 500);
+    };
+  }
+
+  function showError(msg) {
+    const e = document.getElementById('error');
+    e.textContent = msg;
+    e.classList.add('show');
+  }
+
+  // ===== RENDERING ==============================================
+  function renderResults(data) {
+    const s = data.summary;
+
+    // The big swing
+    const swingCard = document.getElementById('swingCard');
+    swingCard.classList.toggle('negative', s.swing <= 0);
+    countUp(document.getElementById('swingBig'), s.swing, " SOL", true);
+
+    const actualStr   = (s.actual_net_sol >= 0 ? "+" : "") + s.actual_net_sol + " SOL";
+    const strategyStr = (s.strategy_net_sol >= 0 ? "+" : "") + s.strategy_net_sol + " SOL";
+    document.getElementById('swingCaption').textContent =
+      `You actually did ${actualStr}. Same trades, with the strategy: ${strategyStr}.`;
+
+    // Stat sticky notes
+    document.getElementById('sTrades').textContent = s.total_trades;
+    document.getElementById('sWinRate').textContent = s.win_rate + "%";
+
+    const actualEl = document.getElementById('sActual');
+    actualEl.textContent = (s.actual_net_sol >= 0 ? "+" : "") + s.actual_net_sol;
+    actualEl.classList.toggle('green', s.actual_net_sol >= 0);
+    actualEl.classList.toggle('red', s.actual_net_sol < 0);
+
+    const stratEl = document.getElementById('sStrategy');
+    stratEl.textContent = (s.strategy_net_sol >= 0 ? "+" : "") + s.strategy_net_sol;
+    stratEl.classList.toggle('green', s.strategy_net_sol >= 0);
+    stratEl.classList.toggle('red',   s.strategy_net_sol < 0);
+
+    // Charts
+    drawPeakChart(data.peak_distribution, s.total_trades);
+    drawHitChart(data.trades, s.total_trades);
+
+    // Hours
+    renderHours('bestHours',  data.timing.best_hours_utc,  true);
+    renderHours('worstHours', data.timing.worst_hours_utc, false);
+
+    // Is this the free (gated) report or the paid full one?
+    const isFree = (timeframe === "7d");
+
+    // Insights — free tier sees first 2, rest locked
+    renderInsights(data.insights || [], isFree);
+
+    // Biggest misses — per-token "you left money here" callouts
+    renderMisses(data.biggest_misses || []);
+
+    // Rules — free tier sees first 2 rules total, rest blurred behind paywall
+    renderRules(data.rules || [], isFree);
+
+    // Deep stats — the core of the richer paid all-time value
+    renderDeepStats(data.deep_stats || null, data.is_paid);
+
+    // Show/hide the big upgrade banner based on tier
+    const banner = document.getElementById('upgradeBanner');
+    if (banner) {
+      banner.style.display = isFree ? 'block' : 'none';
+      const bp = document.getElementById('bannerPrice');
+      if (bp && window._onetimePrice) bp.textContent = window._onetimePrice;
+    }
+
+    // Bottom blocks: free → upsell; paid → email option (if enabled)
+    window._lastSummary = data.summary || {};
+    const upsell = document.getElementById('upsell');
+    const emailBlock = document.getElementById('emailBlock');
+    if (upsell) upsell.style.display = isFree ? 'block' : 'none';
+    if (emailBlock) emailBlock.style.display = (!isFree && window._emailEnabled) ? 'block' : 'none';
+
+    // Sticky upgrade bar: enable for free reports (shows on scroll), off for paid
+    window._stickyEligible = isFree && !window._stickyDismissed;
+    if (!isFree) {
+      const sc = document.getElementById('stickyCta');
+      if (sc) sc.classList.remove('show');
+    }
+
+    document.getElementById('results').classList.add('show');
+  }
+
+  function drawPeakChart(dist, total) {
+    if (peakChartInstance) peakChartInstance.destroy();
+    const ctx = document.getElementById('peakChart');
+    const labels = ['never moved', '0–100%', '100–500%', '500%+'];
+    const values = [dist.never, dist['0_100'], dist['100_500'], dist['500_plus']];
+    const colors = ['#8A8580', '#C8362E', '#3B6AB8', '#2D8F47'];
+
+    peakChartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          backgroundColor: colors,
+          borderColor: '#1A1A1A',
+          borderWidth: 2,
+          borderRadius: 2,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const v = ctx.parsed.y;
+                const pct = total ? Math.round(v / total * 100) : 0;
+                return `${v} trades (${pct}%)`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { font: { family: 'Inter Tight', size: 13 }, color: '#1A1A1A' },
+            grid: { display: false },
+            border: { color: '#1A1A1A', width: 2 },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { font: { family: 'JetBrains Mono', size: 11 }, color: '#4B4B4B', precision: 0 },
+            grid: { color: '#D9E8F5' },
+            border: { color: '#1A1A1A', width: 2 },
+          },
+        },
+      },
+    });
+  }
+
+  function drawHitChart(trades, total) {
+    if (hitChartInstance) hitChartInstance.destroy();
+    const ctx = document.getElementById('hitChart');
+    const levels = [50, 100, 200, 500, 1000];
+    const hits = levels.map(lv => trades.filter(t => t.peak_pct >= lv).length);
+    const pcts = hits.map(h => total ? Math.round(h / total * 100) : 0);
+
+    hitChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: levels.map(lv => '+' + lv + '%'),
+        datasets: [{
+          label: 'Hit rate',
+          data: pcts,
+          borderColor: '#2D8F47',
+          backgroundColor: 'rgba(45, 143, 71, 0.12)',
+          borderWidth: 3,
+          tension: 0.25,
+          fill: true,
+          pointBackgroundColor: '#2D8F47',
+          pointBorderColor: '#1A1A1A',
+          pointBorderWidth: 2,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => `${ctx.parsed.y}% of trades`
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { font: { family: 'Inter Tight', size: 13 }, color: '#1A1A1A' },
+            grid: { display: false },
+            border: { color: '#1A1A1A', width: 2 },
+          },
+          y: {
+            beginAtZero: true, max: 100,
+            ticks: {
+              font: { family: 'JetBrains Mono', size: 11 }, color: '#4B4B4B',
+              callback: v => v + '%',
+            },
+            grid: { color: '#D9E8F5' },
+            border: { color: '#1A1A1A', width: 2 },
+          },
+        },
+      },
+    });
+  }
+
+  function renderHours(id, arr, isBest) {
+    const el = document.getElementById(id);
+    el.innerHTML = "";
+    if (!arr || arr.length === 0) {
+      el.innerHTML = '<li style="font-family:Inter Tight;color:#75706A;">not enough data yet</li>';
+      return;
+    }
+    arr.forEach(h => {
+      const sign = h.net >= 0 ? "+" : "";
+      const cls  = isBest ? "good" : "bad";
+      const li = document.createElement('li');
+      li.className = 'hour-row';
+      li.innerHTML = `
+        <span class="hour-time ${cls}">${String(h.hour).padStart(2,'0')}:00</span>
+        <span class="hour-detail">${sign}${h.net} SOL · ${h.n} trades</span>
+      `;
+      el.appendChild(li);
+    });
+  }
+
+  function renderInsights(items, isFree) {
+    const el = document.getElementById('insightsList');
+    el.innerHTML = "";
+    if (!items.length) {
+      el.innerHTML = '<div class="insight neutral"><div class="insight-body"><h4>Not enough trades yet</h4><p>Upload more history for firm patterns.</p></div></div>';
+      return;
+    }
+    items.forEach((ins) => {
+      const d = document.createElement('div');
+      d.className = 'insight ' + (ins.type || 'neutral');
+      const stat = ins.stat ? `<div class="insight-stat">${escapeHtml(ins.stat)}</div>` : '';
+      d.innerHTML = `${stat}<div class="insight-body"><h4>${escapeHtml(ins.title)}</h4><p>${escapeHtml(ins.body)}</p></div>`;
+      el.appendChild(d);
+    });
+  }
+
+  function renderRules(groups, isFree) {
+    const el = document.getElementById('rulesContainer');
+    el.innerHTML = "";
+    if (!groups.length) {
+      el.innerHTML = '<div class="rule-group"><p class="rule-reason">Not enough trades yet to build a personalised rule set.</p></div>';
+      return;
+    }
+
+    const CAP = 3; // show first 3 rules per group, rest behind a reveal
+    groups.forEach((group, gi) => {
+      const g = document.createElement('div');
+      const cls = group.section.toLowerCase().includes('enter') ? 'enter'
+                : group.section.toLowerCase().includes('exit') ? 'exit'
+                : 'discipline';
+      g.className = 'rule-group ' + cls;
+      const hidden = group.rules.length - CAP;
+      let rulesHtml = '';
+      group.rules.forEach((r, i) => {
+        const extra = i >= CAP ? ' rule-item-extra" data-group="' + gi : '';
+        const style = i >= CAP ? ' style="display:none;"' : '';
+        rulesHtml += `
+          <div class="rule-item${extra}"${style}>
+            <div class="rule-check">✓</div>
+            <div class="rule-body">
+              <div class="rule-text">${escapeHtml(r.rule)}</div>
+              <div class="rule-reason">${escapeHtml(r.reason)}</div>
+            </div>
+          </div>`;
+      });
+      const moreBtn = hidden > 0
+        ? `<button class="rule-more" onclick="expandRules(${gi}, this)">Show ${hidden} more ${escapeHtml(group.section.toLowerCase())} rule${hidden>1?'s':''} ↓</button>`
+        : '';
+      g.innerHTML = `
+        <div class="rule-group-head">
+          <div class="rule-group-icon">${escapeHtml(group.icon || '★')}</div>
+          <div class="rule-group-title">${escapeHtml(group.section)}</div>
+        </div>
+        ${rulesHtml}${moreBtn}`;
+      el.appendChild(g);
+    });
+  }
+
+  function expandRules(gi, btn) {
+    document.querySelectorAll('.rule-item-extra[data-group="' + gi + '"]').forEach((el, i) => {
+      el.style.display = 'flex';
+      el.classList.add('anim-item');
+      el.style.animationDelay = (i * 40) + 'ms';
+    });
+    btn.remove();
+  }
+
+  function totalRuleCount(groups) {
+    return groups.reduce((n, g) => n + g.rules.length, 0);
+  }
+
+  function renderMisses(misses) {
+    const section = document.getElementById('missesSection');
+    const list = document.getElementById('missesList');
+    const intro = document.getElementById('missesIntro');
+    if (!misses.length) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+    const total = misses.reduce((s, m) => s + m.left_sol, 0);
+    // Punchy hero total + framing
+    intro.innerHTML = `<span class="misses-total">−${total.toFixed(2)} SOL</span><span class="misses-total-label">left on the table across these ${misses.length} trades — money your picks earned but your exits gave back.</span>`;
+    list.innerHTML = "";
+    misses.forEach((m, i) => {
+      const d = document.createElement('div');
+      d.className = 'miss-card anim-item';
+      d.style.animationDelay = (i * 50) + 'ms';
+      d.innerHTML = `
+        <div class="miss-rank">#${i + 1}</div>
+        <div class="miss-left">
+          <div class="miss-left-sol">−${m.left_sol}</div>
+          <div class="miss-left-label">SOL left</div>
+        </div>
+        <div class="miss-body">
+          <div class="miss-token">${escapeHtml(m.symbol)}</div>
+          <div class="miss-detail">Bought ${m.sol_in} SOL · peaked <span class="miss-peak">+${m.peak_pct}%</span> · you exited <span class="miss-exit">${m.actual_pct >= 0 ? '+' : ''}${m.actual_pct}%</span></div>
+        </div>`;
+      list.appendChild(d);
+    });
+  }
+
+  function renderDeepStats(ds, isPaid) {
+    const section = document.getElementById('deepSection');
+    const el = document.getElementById('deepStats');
+    if (!ds) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+    el.innerHTML = "";
+
+    // Group 1: sizing & holds
+    const g1 = [
+      { v: ds.median_size_sol + ' SOL', l: 'Typical position' },
+      { v: ds.largest_size_sol + ' SOL', l: 'Largest position' },
+      { v: ds.median_hold_mins + 'min', l: 'Median hold' },
+      { v: ds.median_win_hold_mins + 'min', l: 'Hold on wins', cls: 'green' },
+      { v: ds.median_loss_hold_mins + 'min', l: 'Hold on losses', cls: 'red' },
+      { v: ds.avg_buys_per_token, l: 'Avg buys / token' },
+    ];
+    // Group 2: how their tokens moved
+    const g2 = [
+      { v: '+' + ds.median_peak_pct + '%', l: 'Median token peak' },
+      { v: '+' + ds.best_peak_pct + '%', l: 'Best token peak', cls: 'green' },
+      { v: ds.tokens_pumped_100, l: 'Pumped 100%+' },
+      { v: ds.tokens_pumped_500, l: 'Pumped 500%+' },
+      { v: ds.tokens_pumped_1000, l: 'Pumped 1000%+', cls: 'green' },
+      { v: ds.tokens_never_moved, l: 'Never moved', cls: 'red' },
+    ];
+
+    function grid(title, stats) {
+      let cards = stats.map(s =>
+        `<div class="deep-stat"><div class="deep-stat-val ${s.cls||''}">${escapeHtml(String(s.v))}</div><div class="deep-stat-label">${escapeHtml(s.l)}</div></div>`
+      ).join('');
+      return `<div class="anim-section"><div class="deep-group-title">${title}</div><div class="deep-grid">${cards}</div></div>`;
+    }
+
+    let html = grid('Your sizing &amp; timing', g1) + grid('How your tokens moved', g2);
+
+    // Biggest win / loss
+    if (ds.biggest_win || ds.biggest_loss) {
+      let wl = '<div class="anim-section"><div class="deep-group-title">Your extremes</div><div class="deep-grid">';
+      if (ds.biggest_win) wl += `<div class="deep-stat"><div class="deep-stat-val green">+${ds.biggest_win.net_sol} SOL</div><div class="deep-stat-label">Biggest win · ${escapeHtml(ds.biggest_win.symbol)}</div></div>`;
+      if (ds.biggest_loss) wl += `<div class="deep-stat"><div class="deep-stat-val red">${ds.biggest_loss.net_sol} SOL</div><div class="deep-stat-label">Biggest loss · ${escapeHtml(ds.biggest_loss.symbol)}</div></div>`;
+      wl += '</div></div>';
+      html += wl;
+    }
+
+    // Day-of-week performance with mini bars
+    if (ds.dow_performance && ds.dow_performance.length) {
+      const maxAbs = Math.max(...ds.dow_performance.map(d => Math.abs(d.net)), 0.001);
+      let rows = ds.dow_performance.map(d => {
+        const pct = Math.min(Math.abs(d.net) / maxAbs * 50, 50);
+        const bar = d.net >= 0
+          ? `<div class="dow-bar pos" style="width:${pct}%"></div>`
+          : `<div class="dow-bar neg" style="width:${pct}%"></div>`;
+        return `<div class="dow-row">
+          <div class="dow-name">${d.day}</div>
+          <div class="dow-bar-wrap"><div class="dow-center"></div>${bar}</div>
+          <div class="dow-val ${d.net>=0?'green':'red'}">${d.net>=0?'+':''}${d.net} SOL</div>
+        </div>`;
+      }).join('');
+      html += `<div class="anim-section"><div class="deep-group-title">By day of week</div>${rows}</div>`;
+    }
+
+    el.innerHTML = html;
+  }
+
+  function dismissSticky() {
+    window._stickyDismissed = true;
+    const sc = document.getElementById('stickyCta');
+    if (sc) sc.classList.remove('show');
+  }
+
+  // Show the sticky bar once the user scrolls past the verdict, on free reports
+  window.addEventListener('scroll', () => {
+    const sc = document.getElementById('stickyCta');
+    if (!sc) return;
+    if (!window._stickyEligible || window._stickyDismissed) { sc.classList.remove('show'); return; }
+    const verdict = document.getElementById('swingCard');
+    if (!verdict) return;
+    const pastVerdict = verdict.getBoundingClientRect().bottom < 0;
+    sc.classList.toggle('show', pastVerdict);
+  }, { passive: true });
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    }[c]));
+  }
+</script>
+<script>
+  // Scroll-reveal: sections rise in as they enter view (reduced-motion safe)
+  (function(){
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) return;
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    // observe sections inside results as they're added
+    const mo = new MutationObserver(() => {
+      document.querySelectorAll('.results .section-head:not(.reveal), .results .verdict:not(.reveal), .results .chart-grid:not(.reveal), .results .hours-grid:not(.reveal), .results .insights:not(.reveal)').forEach(el => {
+        el.classList.add('reveal'); io.observe(el);
+      });
+    });
+    const results = document.getElementById('results');
+    if (results) mo.observe(results, { childList: true, subtree: true });
+  })();
+</script>
+</body>
+</html>
