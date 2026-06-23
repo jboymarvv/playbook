@@ -29,7 +29,11 @@ app = FastAPI(title="Playbook")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],     # lock to your domain before launch
+    allow_origins=[
+        "https://twilight-snow-e2f9.jonathanmarv.workers.dev",
+        "https://www.playbook.ie",
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
