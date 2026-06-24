@@ -210,17 +210,21 @@ async def email_report(request: Request):
     body = await request.json()
     wallet = (body.get("wallet") or "").strip()
     email  = (body.get("email") or "").strip()
-    summary = body.get("summary") or {}
+    report_in = body.get("report") or {"summary": body.get("summary") or {}}
 
     if not SOLANA_ADDRESS_RE.match(wallet):
         raise HTTPException(status_code=400, detail="Invalid wallet.")
-    if not access.has_access(wallet):
-        raise HTTPException(status_code=402, detail="Emailing reports is a premium feature.")
     if "@" not in email or "." not in email:
         raise HTTPException(status_code=400, detail="Please enter a valid email.")
 
     short = wallet[:4] + "…" + wallet[-4:]
-    ok, msg = emailer.send_report_email(email, summary, short)
+    # Paid wallets: pull the authoritative full all-time report from cache so the
+    # email is complete. Free wallets: email the 7-day report the client sent.
+    if access.has_access(wallet):
+        full = cache.get_wallet_result(wallet, None) or report_in
+    else:
+        full = report_in
+    ok, msg = emailer.send_report_email(email, full, short)
     if not ok:
         raise HTTPException(status_code=500, detail=f"Couldn't send: {msg}")
     return {"sent": True}
